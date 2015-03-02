@@ -1,0 +1,334 @@
+#+startup: beamer
+#+title: Advanced mixed-models workshop: Session 1
+#+author: Dale Barr
+#+email: dale.barr@glasgow.ac.uk
+#+date: Bremen March 2015
+#+OPTIONS: toc:nil H:2 ^:nil
+#+LATEX_CLASS: beamer
+#+LATEX_CLASS_OPTIONS: []
+#+BEAMER_THEME: Boadilla
+#+LATEX_HEADER: \makeatletter \def\verbatim{\scriptsize\@verbatim \frenchspacing\@vobeyspaces \@xverbatim} \makeatother
+
+#+BEAMER_COLOR_THEME: seahorse
+#+LATEX_HEADER: \definecolor{lgray}{rgb}{0.90,0.90,0.90}
+#+LATEX_HEADER: \beamertemplatenavigationsymbolsempty
+#+LATEX_HEADER: \usemintedstyle{tango}
+#+LATEX_HEADER: \institute{University of Glasgow}
+
+#+COLUMNS: %40ITEM %10BEAMER_env(Env) %9BEAMER_envargs(Env Args) %4BEAMER_col(Col) %10BEAMER_extra(Extra)
+
+#+PROPERTY: header-args:R :session *R* :exports both :results output verbatim :tangle session_01.R
+
+* Setup 																													 :noexport:
+
+#+name: setup-minted
+#+begin_src emacs-lisp :exports none :results silent
+(setq org-src-preserve-indentation t)
+(setq org-latex-minted-options
+			'(("frame" "none")
+				("fontsize" "\\scriptsize")
+				("linenos" "false")
+				("bgcolor" "lgray")
+				("tabsize" "2")
+				))
+#+end_src
+
+
+* Overview and background
+
+** Tentative schedule
+
+*** Today																											:B_block:BMCOL:
+		:PROPERTIES:
+		:BEAMER_env: block
+		:BEAMER_col: .8
+		:END:
+
+|   | Start |   End | Activity                      |
+|---+-------+-------+-------------------------------|
+| 1 | 09:00 | 10:30 | Review / Overview             |
+| 2 | 11:00 | 12:30 | Dataset 1 (one factor)        |
+| 3 | 13:30 | 15:00 | Dataset 2 (multifactor)       |
+| 4 | 15:30 | 17:00 | Slack time / Q&A / BYOD\(^*\) |
+
+*** back																										:B_ignoreheading:
+		:PROPERTIES:
+		:BEAMER_env: ignoreheading
+		:END:
+
+*** Tomorrow																									:B_block:BMCOL:
+		:PROPERTIES:
+		:BEAMER_env: block
+		:BEAMER_col: .9
+		:END:
+
+|   | Start |   End | Activity                      |
+|---+-------+-------+-------------------------------|
+| 1 | 09:00 | 10:30 | Dataset 3 (GLMM)              |
+| 2 | 11:00 | 12:30 | Dataset 4 (multifactor GLMM)  |
+| 3 | 13:00 | 15:00 | Slack time / Q&A / BYOD\(^*\) |
+
+*** back again																							:B_ignoreheading:
+		:PROPERTIES:
+		:BEAMER_env: ignoreheading
+		:END:
+
+#+begin_center
+\(^*\) Bring Your Own Data
+#+end_center
+
+
+
+** Repository for this workshop
+
+If you have git installed, use:
+
+#+BEGIN_SRC sh :exports code :eval never
+git clone https://github.com/dalejbarr/bremen.git
+#+END_SRC
+
+or download full archive from:
+
+#+LaTeX: \begin{small}
+#+BEGIN_CENTER
+https://github.com/dalejbarr/bremen/archive/master.zip
+#+END_CENTER
+#+LaTeX: \end{small}
+
+** General information on LMEMs
+
+- Baayen (2008), /Analyzing Linguistic Data/
+- Baayen, Davidson, & Bates (2008), /JML/
+- Barr, Levy, Scheepers, Tily (2013), /JML/
+- Barr (2013), /Frontiers in Psychology/ (interactions)
+- Bates et al. http://arxiv.org/pdf/1406.5823.pdf (technical)
+- Bolker et al. (2009), /Trends in Ecology & Evolution/
+- Westfall, Kenny, and Judd (2014), /JEP: General/ (power)
+
+- see also =r-lang= and =r-sig-mixed-models= mailing lists
+- =r-sig-mixed-models= FAQ http://glmm.wikidot.com/faq
+- add-on packages =afex=, =pbkrcomp=, =lmerTest=
+
+
+* Generating multilevel data
+
+** Simulated data
+
+- single-factor within subject / between items
+
+- IV: type of word, DV = lexical decision times
+
+#+BEGIN_CENTER
+\(Y_{si} = \beta_0 + S_{0s} + I_{0i} + (\beta_1 + S_{1s})X_{i} + e_{si}\)
+#+END_CENTER
+
+*** Subjects																									:B_block:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .65
+		:BEAMER_env: block
+		:END:
+
+#+BEGIN_CENTER
+\(<S_{0i},S_{1i}> \sim N(<0,0>, \Sigma)\)
+
+#+LaTeX: \vspace{8pt}
+
+\(\Sigma = \left(\begin{array}{cc}{\tau_{00}}^2 & \rho_{I}\tau_{00}\tau_{11} \\
+         \rho_{I}\tau_{00}\tau_{11} & {\tau_{11}}^2 \\
+         \end{array}\right) \)
+
+#+LaTeX: \vspace{8pt}
+
+file:img/bivariatedist.jpg
+#+END_CENTER
+
+*** Items																											:B_block:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .3
+		:BEAMER_env: block
+		:END:
+
+#+BEGIN_CENTER
+\(I_{0i} \sim N(0, \omega_{00}^2)\)
+#+END_CENTER
+
+** Define the data structures
+
+#+BEGIN_SRC R :results silent
+  library("MASS") # needed for mvrnorm
+
+  set.seed(11709)
+
+  nsubj <- 100
+  nitem <- 50 # must be an even number
+
+  ########################################
+  ## create the data structures
+  subj <- data.frame(subject_id = 1:nsubj)
+
+  item <- data.frame(item_id = 1:nitem,
+                     cond = rep(1:2, each = nitem / 2))
+
+  trial <- expand.grid(subject_id = 1:nsubj,
+                        item_id = 1:nitem)
+#+END_SRC
+
+** Define parameters for data generation
+
+#+BEGIN_SRC R :results silent
+  ########################################
+  ## define parameters for data generation
+  ## first, fixed effects
+  mu <- 800 # grand mean
+  eff <- 80 # 80 ms difference
+  effc <- c(-.5, .5) # deviation codes
+  res_sd <- 200 # residual (standard deviation)
+  iri <- 80 # by-item random intercept sd
+  sri <- 100 # by-subject random intercept sd
+  srs <- 40 # by-subject random slope sd
+  rcor <- .2 # correlation between intercept and slope
+#+END_SRC
+
+** By-item random effects
+
+#+BEGIN_SRC R
+  ## define item random effects variance
+  ## and sample items
+  item$iri <- rnorm(nitem, mean = 0, sd = iri)
+
+  ## view the expected mean for each item
+  ## for a typical subject (random effs = 0)
+  head(cbind(mu, eff[item$cond], item$iri,
+             mu + eff[item$cond] + item$iri), 3)
+#+END_SRC
+
+#+RESULTS:
+:  
+:      mu                       
+: [1,] 800 80  -48.66666 831.3333
+: [2,] 800 80 -115.57036 764.4296
+: [3,] 800 80   76.13068 956.1307
+
+** By-subject random effects
+
+#+BEGIN_SRC R
+  ## define subject random effects variance
+  ## variance co-variance matrix
+  svcov <- matrix(c(sri^2, 
+                    rcor * sri * srs,
+                    rcor * sri * srs,
+                    srs^2), nrow = 2)
+
+  ## sample subjects
+  srfx <- mvrnorm(nsubj, mu = c(0, 0), Sigma = svcov)
+
+  subj$sri <- srfx[, 1]
+  subj$srs <- srfx[, 2]
+
+  head(subj, 3)
+#+END_SRC
+
+#+RESULTS:
+:  
+:      [,1] [,2]
+: [1,] 10000  400
+: [2,]   400  400
+:  
+:  subject_id        sri        srs
+: 1          1   9.435036 -0.3821512
+: 2          2 115.786842  5.3213294
+: 3          3 265.806421 23.6740477
+
+** Pull it all together
+
+#+BEGIN_SRC R
+  dat <- merge(merge(subj, trial), item)
+  dat <- dat[order(dat$subject_id, dat$item_id), ] # sort
+  dat$err <- rnorm(nrow(dat), sd = res_sd) # trial-level noise
+  dat$Y <- with(dat,
+      mu + sri + iri + (eff + srs) * effc[cond] + err)
+
+  head(dat)
+#+END_SRC
+
+** Decomposition matrix
+
+#+BEGIN_CENTER
+\(Y_{si} = \beta_0 + S_{0s} + I_{0i} + (\beta_1 + S_{1s})X_{i} + e_{si}\)
+#+END_CENTER
+
+#+BEGIN_SRC R :exports results
+  library("dplyr")
+  dat %>%
+      mutate(mu = mu, eff = eff, x = effc[cond]) %>%
+      select(sid = subject_id, iid = item_id, c = cond, 
+             Y, mu, sri, iri, eff, srs, x, err) %>%
+      filter(sid < 5) %>%
+      group_by(sid, c) %>%
+      slice(1:2) %>% ungroup()
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+ Source: local data frame [64 x 11]
+Groups: sid, c
+
+   sid iid c        Y  mu        sri        iri eff       srs    x        err
+1    1   1 1 866.6973 800 -127.33939   51.14385  80 -15.07568 -0.5  175.35504
+2    1   2 1 520.0347 800 -127.33939  -87.15511  80 -15.07568 -0.5  -33.00861
+3    1  13 2 921.6896 800 -127.33939 -104.37196  80 -15.07568  0.5  320.93881
+4    1  14 2 711.8382 800 -127.33939 -124.47164  80 -15.07568  0.5  131.18702
+5    2   1 1 700.6971 800   38.40241   51.14385  80 -20.38240 -0.5 -159.04036
+6    2   2 1 560.1265 800   38.40241  -87.15511  80 -20.38240 -0.5 -161.31203
+7    2  13 2 280.5352 800   38.40241 -104.37196  80 -20.38240  0.5 -483.30409
+8    2  14 2 479.3219 800   38.40241 -124.47164  80 -20.38240  0.5 -264.41768
+9    3   1 1 695.3036 800  -12.51718   51.14385  80  14.50942 -0.5  -96.06837
+10   3   2 1 773.5395 800  -12.51718  -87.15511  80  14.50942 -0.5  120.46647
+.. ... ... .      ... ...        ...        ... ...       ...  ...        ...
+#+end_example
+
+** Fitting the model
+
+#+BEGIN_SRC R
+  library("lme4")
+  dat$c <- dat$cond - mean(dat$cond)
+  mod <- lmer(Y ~ c + (1 + c | subject_id) + (1 | item_id),
+              dat, REML = FALSE)
+#+END_SRC
+
+** Viewing results
+
+#+BEGIN_SRC R :exports results 
+  summary(mod)
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+Linear mixed model fit by maximum likelihood  ['lmerMod']
+Formula: Y ~ c + (1 + c | subject_id) + (1 | item_id)
+   Data: dat
+
+     AIC      BIC   logLik deviance df.resid 
+  5179.5   5207.2  -2582.8   5165.5      377 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-2.7280 -0.5511 -0.0343  0.6103  3.3860 
+
+Random effects:
+ Groups     Name        Variance Std.Dev. Corr 
+ item_id    (Intercept)  8792.4   93.768       
+ subject_id (Intercept) 11434.8  106.934       
+            c              95.5    9.772  -1.00
+ Residual               33590.6  183.278       
+Number of obs: 384, groups:  item_id, 24; subject_id, 16
+
+Fixed effects:
+            Estimate Std. Error t value
+(Intercept)   779.44      34.18  22.802
+c              46.36      42.68   1.086
+
+Correlation of Fixed Effects:
+  (Intr)
+c -0.045
+#+end_example

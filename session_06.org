@@ -1,0 +1,350 @@
+#+startup: beamer
+#+title: Advanced mixed-models workshop: Session 6
+#+author: Dale Barr
+#+email: dale.barr@glasgow.ac.uk
+#+date: Bremen March 2015
+#+OPTIONS: toc:nil H:2 ^:nil
+#+LATEX_CLASS: beamer
+#+LATEX_CLASS_OPTIONS: []
+#+BEAMER_THEME: Boadilla
+#+LATEX_HEADER: \makeatletter \def\verbatim{\scriptsize\@verbatim \frenchspacing\@vobeyspaces \@xverbatim} \makeatother
+
+#+BEAMER_COLOR_THEME: seahorse
+#+LATEX_HEADER: \definecolor{lgray}{rgb}{0.90,0.90,0.90}
+#+LATEX_HEADER: \beamertemplatenavigationsymbolsempty
+#+LATEX_HEADER: \usemintedstyle{tango}
+#+LATEX_HEADER: \institute{University of Glasgow}
+
+#+COLUMNS: %40ITEM %10BEAMER_env(Env) %9BEAMER_envargs(Env Args) %4BEAMER_col(Col) %10BEAMER_extra(Extra)
+
+#+PROPERTY: header-args:R :session *R* :exports both :results output verbatim :tangle session_06.R
+
+* Setup 																													 :noexport:
+
+#+name: setup-minted
+#+begin_src emacs-lisp :exports none :results silent
+(setq org-src-preserve-indentation t)
+(setq org-latex-minted-options
+			'(("frame" "none")
+				("fontsize" "\\scriptsize")
+				("linenos" "false")
+				("bgcolor" "lgray")
+				("tabsize" "2")
+				))
+#+end_src
+
+* Low-powered study with complex design and categorical DV
+
+** Determining Maximal Random Effects
+
+#+LaTeX: \framesubtitle{Barr, Levy, Scheepers, \& Tily (2013); Barr (2013)}
+
+- Random intercept is needed whenever there are multiple observations per unit
+- Any within-unit factor gets a random slope, /unless there is only
+  one observation per level per unit/
+- Between-unit factors do not get a random slope
+- For each interaction, include a slope for the highest order
+  combination of within-subject factors subsumed by the interaction
+- For time-series data, include random slopes for time predictors if
+  you have more than one time series per unit
+
+** Audience design in language production
+
+#+LaTeX: \framesubtitle{Gann \& Barr (2014), \textit{Language, Cognition, \& Neuroscience}}
+
+- How do we explain referential misspecification?
+
+- Retrieval of past descriptions from memory is an obligatory
+  consequence of attending to a referent with a referential goal in
+  mind
+	- Instance Theory of Automaticity (Logan, 1988)
+
+- Retrieved descriptions checked against context for adequacy, and
+  re-shaped if necessary
+
+** Design
+
+#+BEGIN_CENTER
+[[file:img/GannBarr.png]]
+#+END_CENTER
+
+*** left																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .6
+		:END:
+
+- Addressee: New or Old (Between)
+- Novelty (of referent): New or Old
+- Feedback: Yes or No
+
+*** right																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .4
+		:END:
+
+- 16 dyads (1 spkr, 1 addr)
+- 16 triads (1 spkr, 2 addr)
+
+** Experimental Items
+
+#+BEGIN_CENTER
+[[file:img/GannBarrItems.png]]
+#+END_CENTER
+
+** Before doing analysis: /look at your data/
+
+#+BEGIN_SRC R :exports both :results output
+  library(lme4)
+
+  crefs <- readRDS("crefs.rds")
+  head(crefs, 3)
+
+  crefs_mit <- subset(crefs, ModInTrain) 
+
+  with(crefs_mit, aggregate(Modifier ~ Novelty+Addressee+Feedback, FUN=mean))
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+  SessionID ItemID RespID Novelty Addressee Feedback ModInTrain Modifier  SOT
+1        56      2   6314     New       New       No       TRUE        0 1462
+2        56      3   6319     New       New       No       TRUE        0 1126
+3        56      7   6315     Old       New       No       TRUE        1 1695
+  Novelty Addressee Feedback   Modifier
+1     New       New       No 0.10526316
+2     Old       New       No 0.61224490
+3     New       Old       No 0.08771930
+4     Old       Old       No 0.75510204
+5     New       New      Yes 0.06779661
+6     Old       New      Yes 0.62500000
+7     New       Old      Yes 0.06896552
+8     Old       Old      Yes 0.76000000
+#+end_example
+
+** Plot cell means
+
+#+BEGIN_CENTER
+[[file:img/GBplot.png]]
+#+END_CENTER
+
+** Specifying the random effects
+
+|           | Subjects | Items   |
+|-----------+----------+---------|
+| Addressee | Between  | Within  |
+| Novelty   | Within   | Within  |
+| Feedback  | Within   | Between |
+
+#+BEGIN_SRC R
+  xtabs(~Addressee+SessionID, crefs)
+  xtabs(~Addressee+ItemID, crefs)
+#+END_SRC
+
+** Creating predictor variables
+
+#+BEGIN_SRC R
+crefs_mit2 <- transform(crefs_mit, N=ifelse(Novelty=="New",1,0),
+                    A=ifelse(Addressee=="New",1,0),
+                    F=ifelse(Feedback=="Yes",1,0))
+crefs_mit2c <- transform(crefs_mit2,
+                     Nc=N-mean(N),
+                     Ac=A-mean(A),
+                     Fc=F-mean(F))                          
+
+head(crefs_mit2c)
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+  SessionID ItemID RespID Novelty Addressee Feedback ModInTrain Modifier  SOT N
+1        56      2   6314     New       New       No       TRUE        0 1462 1
+2        56      3   6319     New       New       No       TRUE        0 1126 1
+3        56      7   6315     Old       New       No       TRUE        1 1695 0
+4        56      8   6318     Old       New       No       TRUE        1 1137 0
+5        56     13   6382     New       New       No       TRUE        0  986 1
+6        56     12   6384     New       New       No       TRUE        0  928 1
+  A F         Nc        Ac         Fc
+1 1 0  0.4530892 0.5057208 -0.4988558
+2 1 0  0.4530892 0.5057208 -0.4988558
+3 1 0 -0.5469108 0.5057208 -0.4988558
+4 1 0 -0.5469108 0.5057208 -0.4988558
+5 1 0  0.4530892 0.5057208 -0.4988558
+6 1 0  0.4530892 0.5057208 -0.4988558
+#+end_example
+
+** Specifying the model
+
+Our model:
+\(\log\left(\frac{p_{ij}}{1-p{ij}}\right) &= \beta_0 + \beta_1 A + \beta_2 N + \beta_3 F + \beta_4 AN + \beta_5 AF + \beta_6 NF + \beta_7 ANF\)
+
+*** left																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .5
+		:END:
+
+#+BEGIN_LaTeX
+  \begin{align*}
+      \beta_0 &= \gamma_{0} + S_{0i} + I_{0j} \\
+  (A) \beta_1 &= \gamma_{1} + I_{1j} \\
+  (N) \beta_2 &= \gamma_{2} + S_{2i} + I_{2j} \\
+  (F) \beta_3 &= \gamma_{3} + S_{3i} \\
+  (AN) \beta_4 &= \gamma_{4} + I_{4j} \\
+  (AF) \beta_5 &= \gamma_{5} \\
+  (NF) \beta_6 &= \gamma_{6} + S_{6i} \\
+  (ANF) \beta_7 &= \gamma_{7} 
+  \end{align*}
+#+END_LaTeX
+
+*** right																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .5
+		:END:
+
+|           | Subjects | Items   |
+|-----------+----------+---------|
+| Addressee | Between  | Within  |
+| Novelty   | Within   | Within  |
+| Feedback  | Within   | Between |
+
+*** back																										:B_ignoreheading:
+		:PROPERTIES:
+		:BEAMER_env: ignoreheading
+		:END:
+
+: m1 <- glmer(Modifier ~ Ac*Nc*Fc + (1 + Nc*Fc | SessionID) + (1 + Ac*Nc | ItemID),
+:                       data=crefs_mit2c, family=binomial(link="logit"),
+:                       control=glmerControl(optimizer="bobyqa"))
+
+** Fitting the model
+
+#+BEGIN_SRC R :exports code :eval never
+  # takes a long time but doesn't converge
+  m1 <- glmer(Modifier ~ Ac*Nc*Fc +
+              (1 + Nc*Fc | SessionID) + (1 + Ac*Nc | ItemID),
+              crefs_mit2c, family=binomial(link="logit"),
+              control=glmerControl(optimizer="bobyqa"))
+#+END_SRC
+
+#+BEGIN_EXAMPLE
+:  Warning messages:
+: 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+:   Model failed to converge with max|grad| = 0.01537 (tol = 0.001, component 20)
+: 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+:   Model is nearly unidentifiable: very large eigenvalue
+:  - Rescale variables?;Model is nearly unidentifiable: large eigenvalue ratio
+:  - Rescale variables?
+#+END_EXAMPLE
+** Diagonal model (covariance parameters fixed to zero)
+
+#+BEGIN_SRC R :exports code :eval never
+  # no-random-correlations model
+  m2 <- glmer(Modifier ~ Ac*Nc*Fc + 
+              (1 + Nc*Fc || SessionID) + (1 + Ac*Nc || ItemID),
+              crefs_mit2c, family=binomial(link="logit"),
+              control=glmerControl(optimizer="bobyqa")) # converges
+#+END_SRC
+
+** Diagonal model (output)
+
+#+BEGIN_EXAMPLE
+  Random effects:
+   Groups      Name        Variance  Std.Dev. 
+   SessionID   (Intercept) 6.566e-01 8.103e-01
+   SessionID.1 Nc          1.132e+00 1.064e+00
+   SessionID.2 Fc          0.000e+00 0.000e+00
+   SessionID.3 Nc:Fc       4.297e-15 6.555e-08
+   ItemID      (Intercept) 1.026e+00 1.013e+00
+   ItemID.1    Ac          1.580e-01 3.975e-01
+   ItemID.2    Nc          1.216e+00 1.103e+00
+   ItemID.3    Ac:Nc       0.000e+00 0.000e+00
+  Number of obs: 427, groups:  SessionID, 32; ItemID, 16
+
+  Fixed effects:
+              Estimate Std. Error z value Pr(>|z|)    
+  (Intercept) -1.13298    0.35710  -3.173  0.00151 ** 
+  Ac          -0.29116    0.46433  -0.627  0.53063    
+  Nc          -4.32096    0.61720  -7.001 2.54e-12 ***
+  Fc          -0.38034    0.62448  -0.609  0.54249    
+  Ac:Nc        1.05604    0.78602   1.344  0.17910    
+  Ac:Fc       -0.07195    0.71227  -0.101  0.91954    
+  Nc:Fc       -0.32425    0.89398  -0.363  0.71683    
+  Ac:Nc:Fc    -0.53686    1.33216  -0.403  0.68695    
+#+END_EXAMPLE
+
+** Clean up the random effects
+
+- get rid of REPs estimated to be zero because we're using model
+  comparison, and those could slow down the estimation procedure
+
+#+BEGIN_SRC R :eval never
+  m3 <- glmer(Modifier ~ Ac*Nc*Fc +
+                  (1 | SessionID) +
+                  (0 + Nc | SessionID) +
+                  (1 | ItemID) +
+                  (0 + Ac | ItemID) +
+                  (0 + Nc | ItemID),
+              crefs_mit2c, family=binomial(link="logit"),
+              control=glmerControl(optimizer="bobyqa")) # converges
+#+END_SRC
+
+** Perform tests using model comparison
+
+*** lcol																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .5
+		:END:
+
+#+BEGIN_SRC R :exports code :eval never
+  m3_noA <- update(m3, . ~ . - Ac) 
+  m3_noN <- update(m3, . ~ . - Nc) 
+  m3_noF <- update(m3, . ~ . - Fc) 
+  m3_noAN <- update(m3, . ~ . - Ac:Nc)
+  m3_noAF <- update(m3, . ~ . - Ac:Fc)
+  m3_noNF <- update(m3, . ~ . - Nc:Fc)
+  m3_noANF <- update(m3, . ~ . - Ac:Nc:Fc) 
+
+  anova(m3, m3_noA)
+  anova(m3, m3_noN)
+  anova(m3, m3_noF)
+  anova(m3, m3_noAN)
+  anova(m3, m3_noAF)
+  anova(m3, m3_noNF)
+  anova(m3, m3_noANF)
+#+END_SRC
+
+*** rcol																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .5
+		:END:
+
+|     |  Chisq | Df |     p |
+|-----+--------+----+-------|
+| A   |   .382 |  1 |  .537 |
+| N   | 32.693 |  1 | <.001 |
+| F   |   .372 |  1 |  .542 |
+| AN  |  1.843 |  1 |  .175 |
+| AF  |   .010 |  1 |  .920 |
+| NF  |   .131 |  1 |  .717 |
+| ANF |   .162 |  1 |  .687 |
+
+** Implications
+
+- Little evidence that the speaker took partner's perspective into account
+  - Use of modifier driven by listener's own experience
+- Supports idea that modifier use is (at least partly) based on memory retrieval
+
+* Analysis of count data
+
+#+BEGIN_SRC R
+
+#+END_SRC
+
+** Final thoughts
+
+- When performing (reviewing) analyses, it is of utmost importance to
+  ensure random effects are appropriately specified
+- Random-intercept-only models are rarely appropriate
+- Use design-driven rather than data-driven random effects
+- Development of =lme4= is rapid, and there are many "tricks of the
+  trade"; tune into blogs, mailing lists, and social media to keep up
+- Don't give up!  It will make sense... at some point...

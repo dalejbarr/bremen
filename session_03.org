@@ -1,0 +1,403 @@
+#+startup: beamer
+#+title: Advanced mixed-models workshop: Session 3
+#+author: Dale Barr
+#+email: dale.barr@glasgow.ac.uk
+#+date: Bremen March 2015
+#+OPTIONS: toc:nil H:2 ^:nil
+#+LATEX_CLASS: beamer
+#+LATEX_CLASS_OPTIONS: []
+#+BEAMER_THEME: Boadilla
+#+LATEX_HEADER: \makeatletter \def\verbatim{\scriptsize\@verbatim \frenchspacing\@vobeyspaces \@xverbatim} \makeatother
+
+#+BEAMER_COLOR_THEME: seahorse
+#+LATEX_HEADER: \definecolor{lgray}{rgb}{0.90,0.90,0.90}
+#+LATEX_HEADER: \beamertemplatenavigationsymbolsempty
+#+LATEX_HEADER: \usemintedstyle{tango}
+#+LATEX_HEADER: \institute{University of Glasgow}
+
+#+COLUMNS: %40ITEM %10BEAMER_env(Env) %9BEAMER_envargs(Env Args) %4BEAMER_col(Col) %10BEAMER_extra(Extra)
+
+#+PROPERTY: header-args:R :session *R* :exports both :results output :tangle session_03.R
+
+* Setup 																													 :noexport:
+
+** Formatting
+
+#+name: setup-minted
+#+begin_src emacs-lisp :exports none :results silent
+(setq org-src-preserve-indentation t)
+(setq org-latex-minted-options
+			'(("frame" "none")
+				("fontsize" "\\scriptsize")
+				("linenos" "false")
+				("bgcolor" "lgray")
+				("tabsize" "2")
+				))
+#+end_src
+
+** Prepare the data
+
+#+BEGIN_SRC R :results silent :session *R:2* :tangle junk.R
+  library("dplyr")
+  library("tidyr")
+
+  fan <- readRDS("misc/FAN.rds")
+
+  good_sess <- fan %>%
+      group_by(SessionID, Test) %>%
+      summarise(N = n()) %>%
+      spread(Test, N) %>% as.data.frame() %>%
+      filter(!is.na(`2`)) %>%
+      ungroup() %>% select(SessionID)
+
+  fan_dat <- fan %>% inner_join(good_sess) %>%
+      mutate(RT = click_ms - sync_ms) %>%
+      select(SessionID, ItemID, Day = Test, Cond, RT, Accuracy) %>%
+      as.data.frame() %>%
+      saveRDS("FAN.rds")
+#+end_src
+
+
+* Dataset 3: Learning proper names
+	:PROPERTIES:
+	:header-args:R: :session *R* :exports both :results output verbatim :tangle session_03.R
+	:END:
+
+** Coding categorical predictors
+
+- /simple/ vs /main/ effects in factorial designs
+
+|         | \(B_1\)          | \(B_2\)          |   |                  |
+|         |                  |                  |   |                  |
+| \(A_1\) | \(\bar{Y}_{11}\) | \(\bar{Y}_{12}\) |   | \(\bar{Y}_{1.}\) |
+| \(A_2\) | \(\bar{Y}_{21}\) | \(\bar{Y}_{22}\) |   | \(\bar{Y}_{2.}\) |
+|         | \nbsp{}          |                  |   |                  |
+|         | \(\bar{Y}_{.1}\) | \(\bar{Y}_{.2}\) |   |                  |
+
+| test of simple effect of \(B\) at \(A_1\) | \(H_0 : \(\bar{Y}_{11} = \bar{Y}_{12}\) |
+| test of main effect of \(B\)              | \(H_0 : \(\bar{Y}_{.1} = \bar{Y}_{.2}\) |
+
+** Coding schemes for categorical predictors
+
+If you have a single IV, the choice of coding scheme doesn't really
+matter.
+
+In factorial designs, coding schemes impact:
+
+1. the intercept
+2. all except the highest-order effects and interactions
+3. random effects (see [[http://talklab.psy.gla.ac.uk/simgen/rsonly.html]]).  
+
+** Main coding schemes to use with experimental data
+
+*** Two-level variable																								:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .4
+		:END:
+
+| Scheme    | \(A\) |   V |
+|-----------+-------+-----|
+| Dummy$^*$ | A1    |   0 |
+|           | A2    |   1 |
+|-----------+-------+-----|
+| Sum       | A1    |  -1 |
+|           | A3    |   1 |
+|-----------+-------+-----|
+| Deviation | A1    | -.5 |
+|           | A2    |  .5 |
+|-----------+-------+-----|
+
+$^*$ aka treatment / contrast
+
+*** Three-level variable																							:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .55
+		:END:
+
+| Scheme    | \(A\) |       V1 |       V2 |
+|-----------+-------+----------+----------|
+| Dummy$^*$ | A1    |        0 |        0 |
+|           | A2    |        1 |        0 |
+|           | A3    |        0 |        1 |
+|-----------+-------+----------+----------|
+| Sum       | A1    |       -1 |       -1 |
+|           | A2    |        1 |        0 |
+|           | A3    |        0 |        1 |
+|-----------+-------+----------+----------|
+| Deviation | A1    | \(-1/3\) | \(-1/3\) |
+|           | A2    |  \(2/3\) | \(-1/3\) |
+|           | A3    | \(-1/3\) |  \(2/3\) |
+|-----------+-------+----------+----------|
+
+*** back																										:B_ignoreheading:
+		:PROPERTIES:
+		:BEAMER_env: ignoreheading
+		:END:
+
+#+LaTeX: \vspace{8pt}
+
+*NB*: deviation codes = centered contrast codes
+
+** Simple and main effects
+
+In a design with three two-level factors \(A\), \(B\), and \(C\):
+
+- If all factors are deviation or sum coded, all main effects and
+  interactions have their "canonical" ANOVA interpretation.
+
+- If \(A\) is dummy coded, then the coefficient of \(BC\) corresponds
+  to the \(BC\) interaction at the level where \(A = 0\); \(B\) is the
+  simple effect of \(B\) where \(A = 0\); etc.
+
+- If \(B\) and \(C\) are dummy coded, then \(A\) is the effect of
+  \(A\) where \(B = 0\) and \(C = 0\).
+
+Best practice for ANOVA-style interpretation: deviation coding; use
+dummy coding in follow-up tests.
+
+** Interacting categorical-by-continuous variables
+
+If \(A\) is a continuous variable (e.g., age) and \(B\) is a
+categorical design factor, then:
+
+- The \(B\) coefficient is the effect of \(B\) where \(A\) is zero
+
+- This is a problem when \(A = 0\) lies outside of the observed data
+  (e.g., "age" where the observed age range is 20--50 years old)
+
+- Usually best to center continuous predictors when they interact,
+  unless zero is meaningful
+
+
+** Learning proper names
+
+*** TODO give example 																								:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .45
+		:END:
+
+*** info																															:BMCOL:
+		:PROPERTIES:
+		:BEAMER_col: .55
+		:END:
+
+- 20 participants learned proper names for pictures of 96 target people
+
+- each name heard consistently in one of four voices during training
+  (2M, 2F)
+
+- two test phases on two consecutive days (/Day/: 1 or 2)
+
+- on each day, pictures/names presented in one of three conditions (/Cond/):
+	- same voice
+	- different voice, same gender
+	- different voice, different gender
+
+- we measured RT and accuracy
+
+** Read in the data
+
+#+BEGIN_SRC R :exports code :results silent
+  fan <- readRDS("FAN.rds")
+
+  head(fan)
+
+  # have a look at the design
+  xtabs(~Day + Cond + SessionID + ItemID, fan)
+  xtabs(~Day + Cond + SessionID, fan)
+  xtabs(~Day + Cond + ItemID, fan)
+#+END_SRC
+
+** Define predictors
+
+#+BEGIN_SRC R :exports both :results output graphics :file out/FAN_ix.pdf :width 12 :height 3.5
+  par(mfrow = c(1, 3))
+  with(fan, hist(RT))
+  with(fan, hist(log(RT)))
+
+  cutoff <- with(fan, quantile(RT, .975))
+  fan$RTt <- with(fan, ifelse(RT > cutoff, cutoff, RT))
+
+  with(fan,
+       interaction.plot(factor(Day), factor(Cond), RTt))
+#+END_SRC
+
+#+RESULTS:
+[[file:out/FAN_ix.pdf]]
+
+** Define predictors
+
+#+BEGIN_SRC R
+  fan$T <- with(fan, Day - mean(Day))
+
+  fan$V1 <- with(fan, 
+                 (Cond == "same voice") - mean(Cond == "same voice"))
+
+  fan$V2 <- with(fan,
+                 (Cond == "same gender, different voice") -
+                     mean(Cond == "same gender, different voice"))
+#+END_SRC
+
+** Fit models
+
+#+begin_src R :cache yes :eval never :exports code
+  library("lme4")
+
+  ## doesn't converge
+  mod <- lmer(RTt ~ T * (V1 + V2) +
+                  (T * (V1 + V2) | SessionID) +
+                  (T * (V1 + V2) | ItemID) +
+                  (1 | SessionID:ItemID),
+              fan, REML = FALSE)
+#+END_SRC
+
+** Sources of nonconvergence
+
+- Misspecification of random effects
+	- /unidentifiable/ parameters in the model
+- Using old/unstable version of =lme4= (<1.1-7)
+- Using suboptimal optimizer for =glmer=
+	- use argument \texttt{glmerControl(optimizer='bobyqa')}
+- Uncentered predictors
+- Too few subjects/items
+- Distributional assumptions unsatisfied
+- Null effects
+
+** What to do?
+
+- Make sure effects are identifiable
+- Increase iterations
+	- \texttt{control=lmerControl(maxfit = 20000)} (or =glmerControl()=)
+- Check distributional assumptions
+- Start removing random effects
+	- constrain covariances to zero ("diagonal" model)
+
+** Increase iterations
+#+BEGIN_SRC R :eval never :cache yes :exports code
+  ## increase iterations from 10000 (default) to 20000
+  mod_ii <- lmer(RTt ~ T * (V1 + V2) +
+                  (T * (V1 + V2) | SessionID) +
+                  (T * (V1 + V2) | ItemID) +
+                  (1 | SessionID:ItemID),
+                 fan, REML = FALSE,
+                 control = lmerControl(maxfun = 20000))
+#+END_SRC
+
+** Constrain covariances to zero
+
+- "diagonal model"
+
+#+BEGIN_SRC R :eval never :exports code :eval never
+  ## fit a "diagonal" model
+  ## (constraint covariances to zero)
+  mod_diag <- lmer(RTt ~ T * (V1 + V2) +
+                       (T * (V1 + V2) || SessionID) +
+                       (T * (V1 + V2) || ItemID) +
+                       (1 | SessionID:ItemID),
+              fan, REML = FALSE)
+#+END_SRC
+
+** View results
+
+#+BEGIN_SRC R :exports results :eval never
+  summary(mod_diag)
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+Linear mixed model fit by maximum likelihood  ['lmerMod']
+Formula: RTt ~ T * (V1 + V2) + ((1 | SessionID) + (0 + T | SessionID) +  
+    (0 + V1 | SessionID) + (0 + V2 | SessionID) + (0 + T:V1 |  
+    SessionID) + (0 + T:V2 | SessionID)) + ((1 | ItemID) + (0 +  
+    T | ItemID) + (0 + V1 | ItemID) + (0 + V2 | ItemID) + (0 +  
+    T:V1 | ItemID) + (0 + T:V2 | ItemID)) + (1 | SessionID:ItemID)
+   Data: fan
+
+     AIC      BIC   logLik deviance df.resid 
+187510.1 187657.1 -93735.0 187470.1    11500 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-2.8900 -0.6175 -0.1114  0.4791  4.4215 
+
+Random effects:
+ Groups           Name        Variance Std.Dev.
+ SessionID.ItemID (Intercept) 110838   332.92  
+ ItemID           T:V2             0     0.00  
+ ItemID.1         T:V1             0     0.00  
+ ItemID.2         V2           13313   115.38  
+ ItemID.3         V1           21559   146.83  
+ ItemID.4         T                0     0.00  
+ ItemID.5         (Intercept)  47686   218.37  
+ SessionID        T:V2             0     0.00  
+ SessionID.1      T:V1          2430    49.29  
+ SessionID.2      V2               0     0.00  
+ SessionID.3      V1               0     0.00  
+ SessionID.4      T            50682   225.13  
+ SessionID.5      (Intercept) 332480   576.61  
+ Residual                     580290   761.77  
+Number of obs: 11520, groups:  
+SessionID:ItemID, 1920; ItemID, 96; SessionID, 20
+
+Fixed effects:
+            Estimate Std. Error t value
+(Intercept)  2439.20     131.26  18.583
+T            -249.28      52.30  -4.766
+V1            -14.25      22.95  -0.621
+V2             12.60      21.00   0.600
+T:V1           62.94      36.47   1.725
+T:V2           28.77      34.77   0.827
+
+Correlation of Fixed Effects:
+     (Intr) T     V1    V2    T:V1 
+T    0.000                         
+V1   0.000  0.000                  
+V2   0.000  0.000 0.314            
+T:V1 0.000  0.000 0.000 0.000      
+T:V2 0.000  0.000 0.000 0.000 0.477
+#+end_example
+
+** Clean up the model
+
+#+BEGIN_SRC R :eval never :exports code
+  mod_diag2 <- lmer(RTt ~ T * (V1 + V2) +
+                        (1 | SessionID) +
+                        (0 + T | SessionID) +
+                        (0 + T:V1 | SessionID) +
+                        (1 | ItemID) +
+                        (0 + V1 | ItemID) +
+                        (0 + V2 | ItemID) +
+                        (1 | SessionID:ItemID),
+              fan, REML = FALSE)
+#+END_SRC
+
+** Likelihood ratio tests
+
+#+BEGIN_SRC R :exports code :eval never
+  ## test 2x3 interaction
+  mod_diag2_no_ix <- update(mod_diag2, . ~ . - T:V1 - T:V2)
+
+  ## test main effect of voice
+  mod_diag2_no_voice <- update(mod_diag2, . ~ . - V1 - V2)
+
+  ## test main effect of day
+  mod_diag2_no_day <- update(mod_diag2, . ~ . -T)
+
+  anova(mod_diag2, mod_diag2_no_ix)
+  anova(mod_diag2, mod_diag2_no_voice)
+  anova(mod_diag2, mod_diag2_no_day)
+#+END_SRC
+
+#+begin_example
+                Df    AIC    BIC logLik deviance  Chisq Chi Df Pr(>Chisq)
+mod_diag2_no_ix 12 187497 187585 -93736   187473                         
+mod_diag2       14 187498 187601 -93735   187470 2.8551      2     0.2399
+
+                   Df    AIC    BIC logLik deviance  Chisq Chi Df Pr(>Chisq)
+mod_diag2_no_voice 12 187495 187583 -93736   187471                         
+mod_diag2          14 187498 187601 -93735   187470 1.0804      2     0.5826
+
+                 Df    AIC    BIC logLik deviance  Chisq Chi Df Pr(>Chisq)    
+mod_diag2_no_day 13 187511 187607 -93743   187485                             
+mod_diag2        14 187498 187601 -93735   187470 15.176      1  9.792e-05 ***
+#+end_example
