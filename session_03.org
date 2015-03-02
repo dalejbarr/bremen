@@ -171,10 +171,12 @@ categorical design factor, then:
 
 ** Learning proper names
 
-*** TODO give example 																								:BMCOL:
+*** give example 																											:BMCOL:
 		:PROPERTIES:
 		:BEAMER_col: .45
 		:END:
+
+[[file:img/FAN2.png]]
 
 *** info																															:BMCOL:
 		:PROPERTIES:
