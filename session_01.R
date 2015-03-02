@@ -33,8 +33,8 @@ item$iri <- rnorm(nitem, mean = 0, sd = iri)
 
 ## view the expected mean for each item
 ## for a typical subject (random effs = 0)
-head(cbind(mu, eff[item$cond], item$iri,
-           mu + eff[item$cond] + item$iri), 3)
+head(cbind(mu, effc[item$cond] * eff, item$iri,
+           mu + effc[item$cond] * eff + item$iri), 3)
 
 ## define subject random effects variance
 ## variance co-variance matrix
@@ -58,15 +58,6 @@ dat$Y <- with(dat,
     mu + sri + iri + (eff + srs) * effc[cond] + err)
 
 head(dat)
-
-library("dplyr")
-dat %>%
-    mutate(mu = mu, eff = eff, x = effc[cond]) %>%
-    select(sid = subject_id, iid = item_id, c = cond, 
-           Y, mu, sri, iri, eff, srs, x, err) %>%
-    filter(sid < 5) %>%
-    group_by(sid, c) %>%
-    slice(1:2) %>% ungroup()
 
 library("lme4")
 dat$c <- dat$cond - mean(dat$cond)

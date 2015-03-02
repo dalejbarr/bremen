@@ -198,16 +198,14 @@ file:img/bivariatedist.jpg
 
   ## view the expected mean for each item
   ## for a typical subject (random effs = 0)
-  head(cbind(mu, eff[item$cond], item$iri,
-             mu + eff[item$cond] + item$iri), 3)
+  head(cbind(mu, effc[item$cond] * eff, item$iri,
+             mu + effc[item$cond] * eff + item$iri), 3)
 #+END_SRC
 
 #+RESULTS:
-:  
-:      mu                       
-: [1,] 800 80  -48.66666 831.3333
-: [2,] 800 80 -115.57036 764.4296
-: [3,] 800 80   76.13068 956.1307
+: Error in rnorm(nitem, mean = 0, sd = iri) : object 'nitem' not found
+:  Error in cbind(mu, effc[item$cond] * eff, item$iri, mu + effc[item$cond] *  : 
+:   object 'mu' not found
 
 ** By-subject random effects
 
@@ -257,8 +255,8 @@ file:img/bivariatedist.jpg
 \(Y_{si} = \beta_0 + S_{0s} + I_{0i} + (\beta_1 + S_{1s})X_{i} + e_{si}\)
 #+END_CENTER
 
-#+BEGIN_SRC R :exports results
-  library("dplyr")
+#+BEGIN_SRC R :exports results :tangle junk.R
+  suppressPackageStartupMessages(library("dplyr"))
   dat %>%
       mutate(mu = mu, eff = eff, x = effc[cond]) %>%
       select(sid = subject_id, iid = item_id, c = cond, 
