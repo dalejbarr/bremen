@@ -41,7 +41,7 @@ mod_ii <- lmer(RTt ~ T * (V1 + V2) +
                 (T * (V1 + V2) | ItemID) +
                 (1 | SessionID:ItemID),
                fan, REML = FALSE,
-               control = lmerControl(maxfun = 20000))
+               control = lmerControl(optCtrl = list(maxfun = 20000)))
 
 ## fit a "diagonal" model
 ## (constraint covariances to zero)

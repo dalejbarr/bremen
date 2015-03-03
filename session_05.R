@@ -7,11 +7,33 @@ dat1 <- transform(dat1,
                   V2 = (Cond == "same gender, different voice") -
                       mean(Cond == "same gender, different voice"))
 
-library("lme4")
+dat <- transform(dat,
+                  V1 = (Cond == "same voice") -
+                    mean(Cond == "same voice"),
+                  V2 = (Cond == "same gender, different voice") -
+                    mean(Cond == "same gender, different voice"),
+                 Day = Day - mean(Day))
 
-mod <- glmer(Accuracy ~ V1 + V2 +
+library("lme4")
+mod_full <- glmer(Accuracy ~ Day * (V1 + V2) +
+                    (Day * (V1 + V2) | SessionID) +
+                    (Day * (V1 + V2) | ItemID) +
+                    (1 | SessionID:ItemID),
+                  dat, binomial,
+                  control = glmerControl(optimizer = "bobyqa"))
+
+mod_full_nrc <- glmer(Accuracy ~ Day * (V1 + V2) +
+                    (Day * (V1 + V2) || SessionID) +
+                    (Day * (V1 + V2) || ItemID) +
+                    (1 | SessionID:ItemID),
+                  dat, binomial,
+                  control = glmerControl(optimizer = "bobyqa"))
+
+
+mod_test <- glmer(Accuracy ~ V1 + V2 +
                  (V1 + V2 | SessionID) +
-                 (V1 + V2 | ItemID),
+                 (V1 + V2 | ItemID) +
+               (1 | SessionID:ItemID),
              data = dat1, family = binomial(link = logit),
              control = glmerControl(optimizer = "bobyqa"))
 
@@ -23,7 +45,6 @@ anova(mod, mod2)
 
 pmean <- aggregate(Accuracy ~ Cond, dat, mean)
 
-int <- fixef(mod)
 params <- fixef(mod)[-1]
 
 mx <- matrix(c(-1/3,  2/3, -1/3,
@@ -38,3 +59,4 @@ df1$pmod = 1 / (1 + exp(-df1$logit))
 merge(df1, pmean)
 
 c(params["V1"], OR = exp(params["V1"]))
+

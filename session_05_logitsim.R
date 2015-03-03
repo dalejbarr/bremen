@@ -2,7 +2,7 @@ library("MASS") # needed for mvrnorm
 
 set.seed(11709)
 
-nsubj <- 100
+nsubj <- 200
 nitem <- 50 # must be an even number
 
 ########################################
@@ -18,13 +18,13 @@ trial <- expand.grid(subject_id = 1:nsubj,
 ########################################
 ## define parameters for data generation
 ## first, fixed effects
-mu <- 0 # grand mean
-eff <- 1 # 1 logit difference
+mu <- 1.5 # grand mean
+eff <- .2   # difference
 effc <- c(-.5, .5) # deviation codes
-iri <- 1 # by-item random intercept sd
+iri <- .8 # by-item random intercept sd
 sri <- 1 # by-subject random intercept sd
-srs <- .5 # by-subject random slope sd
-rcor <- .2 # correlation between intercept and slope
+srs <- .1 # by-subject random slope sd
+rcor <- -.4 # correlation between intercept and slope
 
 ## define item random effects variance
 ## and sample items
@@ -52,25 +52,27 @@ head(subj, 3)
 
 dat <- merge(merge(subj, trial), item)
 dat <- dat[order(dat$subject_id, dat$item_id), ] # sort
-dat$err <- rnorm(nrow(dat), sd = res_sd) # trial-level noise
 dat$eta <- with(dat,
-    mu + sri + iri + (eff + srs) * effc[cond] + err)
-
-dat$Y <- sapply(dat$eta, function(x) {
-    p <- 1 / (1 + exp(-x))
-    sample(c(1, 0), 1, prob = c(p, 1 - p))
-})
+    mu + sri + iri + (eff + srs) * effc[cond])
 
 head(dat)
 
+dat$p <- sapply(dat$eta, function(x) 1 / (1 + exp(-x)))
+
+dat$Y <- sapply(dat$p, function(x) {
+  sample(c(0, 1), 1, prob = c(1 - x, x))
+})
+
 library("lme4")
+
 dat$c <- dat$cond - mean(dat$cond)
 
-mod <- glmer(Y ~ c +
-                 (1 + c | subject_id) +
-                 (1 | item_id),
-            dat,
-             binomial(link="logit"),
-             control = glmerControl(optimizer = "bobyqa"))
+mod <- glmer(Y ~ c + 
+              (1 + c | subject_id) + 
+              (1 | item_id),
+            dat, 
+            family = binomial(link = "logit"),
+            control = glmerControl(optimizer = "Nelder_Mead"))
 
 summary(mod)
+

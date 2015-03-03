@@ -5,10 +5,20 @@ head(crefs, 3)
 
 crefs_mit <- subset(crefs, ModInTrain) 
 
-with(crefs_mit, aggregate(Modifier ~ Novelty+Addressee+Feedback, FUN=mean))
+with(crefs_mit, 
+     aggregate(Modifier ~ Novelty+Addressee+Feedback, FUN=mean))
+
+with(crefs_mit, 
+     aggregate(Modifier ~ Novelty+Addressee, FUN=mean))
 
 xtabs(~Addressee+SessionID, crefs)
 xtabs(~Addressee+ItemID, crefs)
+
+xtabs(~Novelty+SessionID, crefs)
+xtabs(~Novelty+ItemID, crefs)
+
+xtabs(~Feedback+SessionID, crefs)
+xtabs(~Feedback+ItemID, crefs)
 
 crefs_mit2 <- transform(crefs_mit, N=ifelse(Novelty=="New",1,0),
                     A=ifelse(Addressee=="New",1,0),
